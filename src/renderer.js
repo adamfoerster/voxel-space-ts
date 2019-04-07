@@ -217,3 +217,4 @@ function init(state) {
     }, 2000);
 }
 init(state);
+//# sourceMappingURL=renderer.js.map

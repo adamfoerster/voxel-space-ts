@@ -1,65 +1,15 @@
+import {
+  detectKeysDown,
+  detectKeysUp,
+  detectMouseDown,
+  detectMouseUp,
+  detectMouseMove
+} from './input-detection';
 
-// ---------------------------------------------
-// Viewer information
-
-let camera = {
-  x: 512, // x position on the map
-  y: 800, // y position on the map
-  height: 78, // height of the camera
-  angle: 0, // direction of the camera
-  horizon: 100, // horizon position (look up and down)
-  distance: 800, // distance of map
-};
-
-// ---------------------------------------------
-// Landscape data
-
-let map = {
-  width: 1024,
-  height: 1024,
-  shift: 10, // power of two: 2^10 = 1024
-  altitude: new Uint8Array(1024 * 1024), // 1024 * 1024 byte array with height information
-  color: new Uint32Array(1024 * 1024), // 1024 * 1024 int array with RGB colors
-};
-
-// ---------------------------------------------
-// Screen data
-
-let screendata = {
-  canvas: null,
-  context: null,
-  imagedata: null,
-
-  bufarray: null, // color data
-  buf8: null, // the same array but with bytes
-  buf32: null, // the same array but with 32-Bit words
-
-  backgroundcolor: 0xffe09090,
-};
-
-// ---------------------------------------------
-// Keyboard and mouse interaction
-
-let input = {
-  forwardbackward: 0,
-  leftright: 0,
-  updown: 0,
-  lookup: false,
-  lookdown: false,
-  mouseposition: null,
-  keypressed: false,
-};
-
-let updaterunning = false;
-
-let time = new Date().getTime();
-
-// for fps display
-let timelastframe = new Date().getTime();
-let framesQtd: number = 0;
+import { state, EngineState } from './state';
 
 // Update the camera for next frame. Dependent on keypresses
-function updateCamera() {
+function updateCamera({input, camera, time, map}: EngineState) {
   const current = new Date().getTime();
 
   input.keypressed = false;
@@ -99,136 +49,9 @@ function updateCamera() {
 }
 
 // ---------------------------------------------
-// Keyboard and mouse event handlers
-// ---------------------------------------------
-// Keyboard and mouse event handlers
-
-function getMousePosition(e) {
-  // fix for Chrome
-  if (e.type.startsWith('touch')) {
-    return [e.targetTouches[0].pageX, e.targetTouches[0].pageY];
-  }
-  return [e.pageX, e.pageY];
-}
-
-function detectMouseDown(e) {
-  input.forwardbackward = 3;
-  input.mouseposition = getMousePosition(e);
-  time = new Date().getTime();
-
-  if (!updaterunning) draw();
-  return;
-}
-
-function detectMouseUp() {
-  input.mouseposition = null;
-  input.forwardbackward = 0;
-  input.leftright = 0;
-  input.updown = 0;
-  return;
-}
-
-function detectMouseMove(e) {
-  e.preventDefault();
-  if (input.mouseposition == null) return;
-  if (input.forwardbackward === 0) return;
-
-  const currentMousePosition = getMousePosition(e);
-
-  input.leftright =
-    ((input.mouseposition[0] - currentMousePosition[0]) / window.innerWidth) *
-    2;
-  camera.horizon =
-    100 +
-    ((input.mouseposition[1] - currentMousePosition[1]) / window.innerHeight) *
-    500;
-  input.updown =
-    ((input.mouseposition[1] - currentMousePosition[1]) / window.innerHeight) *
-    10;
-}
-
-function detectKeysDown(e) {
-  switch (e.keyCode) {
-    case 37: // left cursor
-    case 65: // a
-      input.leftright = +1;
-      break;
-    case 39: // right cursor
-    case 68: // d
-      input.leftright = -1;
-      break;
-    case 38: // cursor up
-    case 87: // w
-      input.forwardbackward = 3;
-      break;
-    case 40: // cursor down
-    case 83: // s
-      input.forwardbackward = -3;
-      break;
-    case 82: // r
-      input.updown = +2;
-      break;
-    case 70: // f
-      input.updown = -2;
-      break;
-    case 69: // e
-      input.lookup = true;
-      break;
-    case 81: // q
-      input.lookdown = true;
-      break;
-    default:
-      return;
-  }
-
-  if (!updaterunning) {
-    time = new Date().getTime();
-    draw();
-  }
-  return false;
-}
-
-function detectKeysUp(e) {
-  switch (e.keyCode) {
-    case 37: // left cursor
-    case 65: // a
-      input.leftright = 0;
-      break;
-    case 39: // right cursor
-    case 68: // d
-      input.leftright = 0;
-      break;
-    case 38: // cursor up
-    case 87: // w
-      input.forwardbackward = 0;
-      break;
-    case 40: // cursor down
-    case 83: // s
-      input.forwardbackward = 0;
-      break;
-    case 82: // r
-      input.updown = 0;
-      break;
-    case 70: // f
-      input.updown = 0;
-      break;
-    case 69: // e
-      input.lookup = false;
-      break;
-    case 81: // q
-      input.lookdown = false;
-      break;
-    default:
-      return;
-      break;
-  }
-  return false;
-}
-
-// ---------------------------------------------
 // Fast way to draw vertical lines
 
-function drawVerticalLine(argx, argytop, argybottom: number, argcol) {
+function drawVerticalLine(argx, argytop, argybottom: number, argcol, screendata) {
   const x = argx || 0;
   let ytop = argytop | 0;
   const ybottom = argybottom | 0;
@@ -249,22 +72,22 @@ function drawVerticalLine(argx, argytop, argybottom: number, argcol) {
 // ---------------------------------------------
 // Basic screen handling
 
-function drawBackground() {
+function drawBackground(screendata) {
   const buf32 = screendata.buf32;
   const color = screendata.backgroundcolor | 0;
   for (let i = 0; i < buf32.length; i++) buf32[i] = color | 0;
 }
 
 // Show the back buffer on screen
-function flip() {
+function flip(screendata) {
   screendata.imagedata.data.set(screendata.buf8);
-  screendata.context.putImageData(screendata.imagedata, 0, 0);
+  screendata.context.putImageData(screendata.imagedata,0,0);
 }
 
 // ---------------------------------------------
 // The main render routine
 
-function render() {
+function render({map, screendata, camera}: EngineState) {
   const mapwidthperiod = map.width - 1;
   const mapheightperiod = map.height - 1;
 
@@ -298,7 +121,7 @@ function render() {
         0;
       const heightonscreen =
         ((camera.height - map.altitude[mapoffset]) * invz + camera.horizon) | 0;
-      drawVerticalLine(i, heightonscreen | 0, hiddeny[i], map.color[mapoffset]);
+      drawVerticalLine(i, heightonscreen || 0, hiddeny[i], map.color[mapoffset], screendata);
       if (heightonscreen < hiddeny[i]) hiddeny[i] = heightonscreen;
       plx += dx;
       ply += dy;
@@ -310,18 +133,18 @@ function render() {
 // ---------------------------------------------
 // Draw the next frame
 
-function draw() {
-  updaterunning = true;
-  updateCamera();
-  drawBackground();
-  render();
-  flip();
-  framesQtd++;
+function draw(state: EngineState) {
+  state.updaterunning = true;
+  updateCamera(state);
+  drawBackground(state.screendata);
+  render(state);
+  flip(state.screendata);
+  state.framesQtd++;
 
-  if (!input.keypressed) {
-    updaterunning = false;
+  if (!state.input.keypressed) {
+    state.updaterunning = false;
   } else {
-    window.setTimeout(draw, 0);
+    window.setTimeout(draw,0);
   }
 }
 
@@ -329,15 +152,15 @@ function draw() {
 // Init routines
 
 // Util class for downloading the png
-function downloadImagesAsync(urls) {
-  return new Promise((resolve, reject) => {
+function downloadImagesAsync(urls, map) {
+  return new Promise((resolve,reject) => {
     let pending = urls.length;
     const result = [];
     if (pending === 0) {
       resolve([]);
       return;
     }
-    urls.forEach((url, i) => {
+    urls.forEach((url,i) => {
       const image = new Image();
       // image.addEventListener("load", function() {
       image.onload = function () {
@@ -345,8 +168,8 @@ function downloadImagesAsync(urls) {
         const tempcontext = tempcanvas.getContext('2d');
         tempcanvas.width = map.width;
         tempcanvas.height = map.height;
-        tempcontext.drawImage(image, 0, 0, map.width, map.height);
-        result[i] = tempcontext.getImageData(0, 0, map.width, map.height).data;
+        tempcontext.drawImage(image,0,0,map.width,map.height);
+        result[i] = tempcontext.getImageData(0,0,map.width,map.height).data;
         pending--;
         if (pending === 0) {
           resolve(result);
@@ -357,73 +180,74 @@ function downloadImagesAsync(urls) {
   });
 }
 
-function loadMap(filenames) {
+function loadMap(filenames, map) {
   const files = filenames.split(';');
   downloadImagesAsync([
     `maps/${files[0]}.png`,
     `maps/${files[1]}.png`,
-  ]).then(onLoadedImages);
+  ], map).then(result => onLoadedImages(result, state));
 }
 
-function onLoadedImages(result) {
+function onLoadedImages(result, state: EngineState) {
   const datac = result[0];
   const datah = result[1];
-  for (let i = 0; i < map.width * map.height; i++) {
-    map.color[i] =
+  for (let i = 0; i < state.map.width * state.map.height; i++) {
+    state.map.color[i] =
       0xff000000 |
       (datac[(i << 2) + 2] << 16) |
       (datac[(i << 2) + 1] << 8) |
       datac[(i << 2) + 0];
-    map.altitude[i] = datah[i << 2];
+    state.map.altitude[i] = datah[i << 2];
   }
-  draw();
+  draw(state);
 }
 
-function onResizeWindow() {
-  screendata.canvas = document.getElementById('fullscreenCanvas');
+function onResizeWindow(state: EngineState) {
+  state.screendata.canvas = document.getElementById('fullscreenCanvas');
 
   const aspect = window.innerWidth / window.innerHeight;
 
-  screendata.canvas.width = window.innerWidth < 800 ? window.innerWidth : 800;
-  screendata.canvas.height = screendata.canvas.width / aspect;
+  state.screendata.canvas.width = window.innerWidth < 800 ? window.innerWidth : 800;
+  state.screendata.canvas.height = state.screendata.canvas.width / aspect;
 
-  if (screendata.canvas.getContext) {
-    screendata.context = screendata.canvas.getContext('2d');
-    screendata.imagedata = screendata.context.createImageData(
-      screendata.canvas.width,
-      screendata.canvas.height,
+  if (state.screendata.canvas.getContext) {
+    state.screendata.context = state.screendata.canvas.getContext('2d');
+    state.screendata.imagedata = state.screendata.context.createImageData(
+      state.screendata.canvas.width,
+      state.screendata.canvas.height,
     );
   }
 
-  screendata.bufarray = new ArrayBuffer(
-    screendata.imagedata.width * screendata.imagedata.height * 4,
+  state.screendata.bufarray = new ArrayBuffer(
+    state.screendata.imagedata.width * state.screendata.imagedata.height * 4,
   );
-  screendata.buf8 = new Uint8Array(screendata.bufarray);
-  screendata.buf32 = new Uint32Array(screendata.bufarray);
-  draw();
+  state.screendata.buf8 = new Uint8Array(state.screendata.bufarray);
+  state.screendata.buf32 = new Uint32Array(state.screendata.bufarray);
+  draw(state);
 }
 
-function init() {
+function init(state) {
+  let {map, input, time, updaterunning, camera, framesQtd, timelastframe} = state;
   for (let i = 0; i < map.width * map.height; i++) {
     map.color[i] = 0xff007050;
     map.altitude[i] = 0;
   }
 
-  loadMap('C1W;D1');
-  onResizeWindow();
+  loadMap('C1W;D1', map);
+  onResizeWindow(state);
 
   // set event handlers for keyboard, mouse, touchscreen and window resize
   const canvas = document.getElementById('fullscreenCanvas');
-  canvas.onkeydown = detectKeysDown;
-  canvas.onkeyup = detectKeysUp;
-  canvas.onmousedown = detectMouseDown;
-  canvas.onmouseup = detectMouseUp;
-  canvas.onmousemove = detectMouseMove;
-  canvas.ontouchstart = detectMouseDown;
-  canvas.ontouchend = detectMouseUp;
-  canvas.ontouchmove = detectMouseMove;
+  document.onkeydown = (e) => detectKeysDown(e, input, updaterunning, time, draw);
+  document.onkeyup = (e) => detectKeysUp(e, input);
+  document.onmousedown = (e) => detectMouseDown(e, input, time, updaterunning, draw);
+  document.onmouseup = () => detectMouseUp(input);
+  document.onmousemove = (e) => detectMouseMove(e, input, camera);
+  document.ontouchstart = (e) => detectMouseDown(e, input, time, updaterunning, draw);
+  document.ontouchend = () => detectMouseUp(input);
+  document.ontouchmove = (e) => detectMouseMove(e, input, camera);
 
-  window.onresize = onResizeWindow;
+  window.onresize = (e) => onResizeWindow(state);
 
   window.setInterval(() => {
     const current = new Date().getTime();
@@ -431,8 +255,8 @@ function init() {
     document.getElementById('fps').innerText = `${fps} fps`;
     framesQtd = 0;
     timelastframe = current;
-// tslint:disable-next-line: align
-  }, 2000);
+    // tslint:disable-next-line: align
+  },2000);
 }
 
-init();
+init(state);
